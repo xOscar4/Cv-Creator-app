@@ -11,6 +11,7 @@ export const InputField = ({ label, error, ...props}:InputFieldProps) =>{
         <View style={styles.container}>
         <Text style={styles.label}>{label}</Text>
         <TextInput
+            {...props}
             style={[styles.input, error && styles.inputError]}
             placeholderTextColor="#999"
         />

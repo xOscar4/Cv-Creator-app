@@ -8,10 +8,39 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { DatePickerField } from "../components/DatePickerField";
 import { InputField } from "../components/InputField";
 import { NavigationButton } from "../components/NavigationButton";
 import { useCVContext } from "../context/CVContext";
 import { Education } from "../types/cv.types";
+import * as yup from "yup";
+
+const educationSchema = yup.object({
+  institution: yup
+    .string()
+    .trim()
+    .min(2, "La institución debe tener al menos 2 caracteres")
+    .required("La institución es obligatoria"),
+  degree: yup
+    .string()
+    .trim()
+    .min(2, "El título debe tener al menos 2 caracteres")
+    .required("El título o grado es obligatorio"),
+  field: yup
+    .string()
+    .trim()
+    .test(
+      "field-name",
+      "Ingrese un área de estudio válida",
+      (value) => !value || /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/.test(value)
+    ),
+  graduationYear: yup
+    .string()
+    .matches(/^\d{4}$/, {
+      message: "Seleccione un año de graduación válido",
+      excludeEmptyString: true,
+    }),
+});
 
 export default function EducationScreen() {
   const router = useRouter();
@@ -23,10 +52,53 @@ export default function EducationScreen() {
     field: "",
     graduationYear: "",
   });
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof Omit<Education, "id">, string>>
+  >({});
+
+  const handleChange = (
+    field: keyof Omit<Education, "id">,
+    value: string
+  ) => {
+    const updatedData = { ...formData, [field]: value };
+    setFormData(updatedData);
+
+    try {
+      educationSchema.validateSyncAt(field, updatedData);
+      setErrors((currentErrors) => {
+        const nextErrors = { ...currentErrors };
+        delete nextErrors[field];
+        return nextErrors;
+      });
+    } catch (error) {
+      if (!(error instanceof yup.ValidationError)) {
+        throw error;
+      }
+      setErrors((currentErrors) => ({ ...currentErrors, [field]: error.message }));
+    }
+  };
 
   const handleAdd = () => {
-    if (!formData.institution || !formData.degree) {
-      Alert.alert("Error", "Por favor completa al menos institución y título");
+    const nextErrors: Partial<
+      Record<keyof Omit<Education, "id">, string>
+    > = {};
+
+    try {
+      educationSchema.validateSync(formData, { abortEarly: false });
+    } catch (error) {
+      if (!(error instanceof yup.ValidationError)) {
+        throw error;
+      }
+      error.inner.forEach((validationError) => {
+        if (validationError.path) {
+          nextErrors[validationError.path as keyof Omit<Education, "id">] =
+            validationError.message;
+        }
+      });
+    }
+
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
       return;
     }
 
@@ -44,6 +116,7 @@ export default function EducationScreen() {
       field: "",
       graduationYear: "",
     });
+    setErrors({});
 
     Alert.alert("Éxito", "Educación agregada correctamente");
   };
@@ -68,33 +141,35 @@ export default function EducationScreen() {
           label="Institución *"
           placeholder="Nombre de la universidad/institución"
           value={formData.institution}
-          onChangeText={(text) =>
-            setFormData({ ...formData, institution: text })
-          }
+          onChangeText={(text) => handleChange("institution", text)}
+          error={errors.institution}
         />
 
         <InputField
           label="Título/Grado *"
           placeholder="Ej: Licenciatura, Maestría"
           value={formData.degree}
-          onChangeText={(text) => setFormData({ ...formData, degree: text })}
+          onChangeText={(text) => handleChange("degree", text)}
+          error={errors.degree}
         />
 
         <InputField
           label="Área de Estudio"
           placeholder="Ej: Ingeniería en Sistemas"
           value={formData.field}
-          onChangeText={(text) => setFormData({ ...formData, field: text })}
+          onChangeText={(text) => handleChange("field", text)}
+          error={errors.field}
         />
 
-        <InputField
+        <DatePickerField
           label="Año de Graduación"
           placeholder="Ej: 2023"
           value={formData.graduationYear}
-          onChangeText={(text) =>
-            setFormData({ ...formData, graduationYear: text })
+          dateFormat="year"
+          onChangeValue={(graduationYear) =>
+            handleChange("graduationYear", graduationYear)
           }
-          keyboardType="numeric"
+          error={errors.graduationYear}
         />
 
         <NavigationButton title="Agregar Educación" onPress={handleAdd} />
@@ -202,4 +277,3 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
 });
-

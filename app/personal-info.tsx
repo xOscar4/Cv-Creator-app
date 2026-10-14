@@ -5,20 +5,72 @@ import { InputField } from "../components/InputField";
 import { NavigationButton } from "../components/NavigationButton";
 import { useCVContext } from "../context/CVContext";
 import { PersonalInfo } from "../types/cv.types";
+import * as yup from "yup";
+
+const personalInfoSchema = yup.object({
+    fullName: yup.string().trim().required("El nombre completo es obligatorio"),
+    email: yup.string().trim().email("Ingrese un email válido").required("El email es obligatorio"),
+    phone: yup
+        .string()
+        .trim()
+        .required("El teléfono es obligatorio")
+        .matches(/^\+?[0-9\s()-]+$/, "Ingrese un número válido")
+        .test("phone-length", "Ingrese un número válido", (value) => {
+            const digitCount = value?.replace(/\D/g, "").length ?? 0;
+            return digitCount >= 7 && digitCount <= 15;
+        }),
+    location: yup.string().trim().required("La ubicación es obligatoria"),
+    summary: yup.string().trim().required("El resumen profesional es obligatorio"),
+});
 
 export default function PersonalInfoScreen() {
     const router = useRouter();
     const {cvData, updatePersonalInfo} = useCVContext();
 
     const [formData, setFormData] = useState<PersonalInfo>(cvData.personalInfo);
+    const [errors, setErrors] = useState<Partial<Record<keyof PersonalInfo, string>>>({});
 
     useEffect(() =>{
         setFormData(cvData.personalInfo);
+        setErrors({});
     },[cvData.personalInfo]);
 
+    const handleChange = (field: keyof PersonalInfo, value: string) => {
+        const updatedData = { ...formData, [field]: value };
+        setFormData(updatedData);
+
+        try {
+            personalInfoSchema.validateSyncAt(field, updatedData);
+            setErrors((currentErrors) => {
+                const nextErrors = { ...currentErrors };
+                delete nextErrors[field];
+                return nextErrors;
+            });
+        } catch (error) {
+            if (!(error instanceof yup.ValidationError)) {
+                throw error;
+            }
+            setErrors((currentErrors) => ({ ...currentErrors, [field]: error.message }));
+        }
+    };
+
     const handleSave = () =>{
-        if(!formData.fullName || !formData.email){
-            Alert.alert("Error","Por favor completa al menos el nombre y el email");
+        const nextErrors: Partial<Record<keyof PersonalInfo, string>> = {};
+        const fields: (keyof PersonalInfo)[] = ["fullName", "email", "phone", "location", "summary"];
+
+        for (const field of fields) {
+            try {
+                personalInfoSchema.validateSyncAt(field, formData);
+            } catch (error) {
+                if (!(error instanceof yup.ValidationError)) {
+                    throw error;
+                }
+                nextErrors[field] = error.message;
+            }
+        }
+
+        setErrors(nextErrors);
+        if (Object.keys(nextErrors).length > 0) {
             return;
         }
 
@@ -35,37 +87,41 @@ export default function PersonalInfoScreen() {
                     label="Nombre Completo *"
                     placeholder="Oscar Borja"
                     value={formData.fullName}
-                    onChangeText={(text) => setFormData({ ...formData,fullName: text})}
+                    onChangeText={(text) => handleChange("fullName", text)}
+                    error={errors.fullName}
                 />
 
                 <InputField
                     label="Email *"
                     placeholder="oscar@gmail.com"
                     value={formData.email}
-                    onChangeText={(text) => setFormData({ ...formData,
-                    email: text})}
+                    onChangeText={(text) => handleChange("email", text)}
+                    error={errors.email}
                 />
 
                 <InputField
                     label="Teléfono *"
                     placeholder="+593 99 999 999"
                     value={formData.phone}
-                    onChangeText={(text) => setFormData({ ...formData,
-                    phone: text})}
+                    onChangeText={(text) => handleChange("phone", text)}
+                    keyboardType="phone-pad"
+                    error={errors.phone}
                 />
 
                 <InputField
                     label="Ubicación *"
                     placeholder="Quito, Ecuador"
                     value={formData.location}
-                    onChangeText={(text) => setFormData({ ...formData,location: text})}
+                    onChangeText={(text) => handleChange("location", text)}
+                    error={errors.location}
                 />
                 
                 <InputField
                     label="Resumen Profesional *"
                     placeholder="Describe brevemente tu perfil profesional... "
                     value={formData.summary}
-                    onChangeText={(text) => setFormData({ ...formData,summary: text})}
+                    onChangeText={(text) => handleChange("summary", text)}
+                    error={errors.summary}
                     multiline
                     numberOfLines={4}
                     style={{height: 100, textAlignVertical: "top" }}
